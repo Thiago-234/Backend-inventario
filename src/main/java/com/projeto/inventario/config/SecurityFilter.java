@@ -8,10 +8,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.projeto.inventario.entities.Usuario;
 import com.projeto.inventario.repositories.UsuarioRepository;
 import com.projeto.inventario.service.TokenService;
 
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,31 +30,40 @@ public class SecurityFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
         throws ServletException, IOException {
 
-        var token = recuperarToken(request);
-        if (token != null) {
-            try {
-                var login = tokenService.getSubject(token);
-                var usuario = usuarioRepository.findByLogin(login);
-                if (usuario.isPresent()) {
-                    var authentication = new UsernamePasswordAuthenticationToken(
-                        usuario.get(), null, usuario.get().getAuthorities()
-                    );
+        try {
+            String token = recuperarToken(request);
+            
+            if (token != null && tokenService.isTokenValid(token)) {
+                String login = tokenService.getSubject(token);
+                Usuario usuario = usuarioRepository.findByLogin(login)
+                    .orElse(null);
+                
+                if (usuario != null) {
+                    UsernamePasswordAuthenticationToken authentication = 
+                        new UsernamePasswordAuthenticationToken(
+                            usuario, 
+                            null, 
+                            usuario.getAuthorities()
+                        );
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
-            } catch (JwtException e) {
             }
+        } catch (Exception e) {
+            // Log da exceção se necessário
+            System.err.println("Erro na validação do token: " + e.getMessage());
         }
+        
         filterChain.doFilter(request, response);
     }
 
     private String recuperarToken(HttpServletRequest request) {
-        var authHeader = request.getHeader("Authorization");
+        String authHeader = request.getHeader("Authorization");
+        
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
-            if (!token.isBlank()) {
-                return token;
-            }
+            return token.trim().isEmpty() ? null : token;
         }
+        
         return null;
     }
 }
